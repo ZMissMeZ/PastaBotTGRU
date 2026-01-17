@@ -8,28 +8,16 @@ from collections import deque
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import Message
-from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.client.telegram import TelegramAPIServer
 
 # ── Настройки ────────────────────────────────────────────────────────────────
 BOT_TOKEN = "8520620674:AAEI6e3RC61QKoZhxI4QOxxRoTtMS0NdN0M"
 JSON_FILE = "result.json"
-ALLOWED_CHAT_ID = -1002675373747
+ALLOWED_GROUP_CHAT_ID = -1002675373747    # только эта группа (если нужно ограничить)
 MIN_LENGTH = 20
-RECENT_LIMIT = 10
-
-# Прокси (замени на свой рабочий!)
-PROXY = None  # ← 'http://ip:port' или 'socks5://ip:port' или None
+RECENT_LIMIT = 10                         # не повторять последние 10
 
 logging.basicConfig(level=logging.INFO)
-
-# Если прокси указан — используем
-if PROXY:
-    session = AiohttpSession(proxy=PROXY)
-    bot = Bot(token=BOT_TOKEN, session=session)
-else:
-    bot = Bot(token=BOT_TOKEN)
-
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 teyki_list = []
@@ -76,13 +64,17 @@ def load_teyki():
         print(f"Ошибка загрузки: {e}")
         exit(1)
 
+# ── Команда /pasta ───────────────────────────────────────────────────────────
 @dp.message(Command("pasta"))
 async def send_random_pasta(message: Message):
-    if message.chat.id != ALLOWED_CHAT_ID:
-        return
+    chat_id = message.chat.id
+
+    # Разрешаем в личке ИЛИ в указанной группе
+    if chat_id != ALLOWED_GROUP_CHAT_ID and not message.chat.type == "private":
+        return  # игнорируем в других группах
 
     if not teyki_list:
-        await message.answer("Пока нет паст :(")
+        await message.answer("Пока нет текстовых паст в базе :(")
         return
 
     candidates = [t for t in teyki_list if t not in recently_sent]
@@ -95,8 +87,13 @@ async def send_random_pasta(message: Message):
     text = re.sub(r'\s*#тейк\s*', ' ', text, flags=re.IGNORECASE).strip()
     text = re.sub(r'\s+', ' ', text).strip()
 
-    await message.answer(text, disable_web_page_preview=True)
+    try:
+        await message.answer(text, disable_web_page_preview=True)
+    except Exception as e:
+        logging.error(f"Ошибка отправки: {e}")
+        await message.answer("Не получилось отправить пасту, попробуй ещё раз.")
 
+# ── Запуск ───────────────────────────────────────────────────────────────────
 async def main():
     load_teyki()
     await dp.start_polling(bot, allowed_updates=["message"])
