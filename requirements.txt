@@ -1,5 +1,3 @@
 aiogram==3.13.1
 pyrogram==2.0.106
-requests==2.31.0
-beautifulsoup4==4.12.2
-tgcrypto==1.2.5  # для ускорения Pyrogram
+tgcrypto==1.2.5
