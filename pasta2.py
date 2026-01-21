@@ -15,8 +15,8 @@ import requests
 # ── Настройки ────────────────────────────────────────────────────────────────
 BOT_TOKEN = "8520620674:AAEI6e3RC61QKoZhxI4QOxxRoTtMS0NdN0M"
 JSON_FILE = "result.json"
-API_ID = 1234567          # ← твой API_ID
-API_HASH = "твой_api_hash"  # ← твой API_HASH
+API_ID = 37663298          # ← твой API_ID
+API_HASH = "e95ae41cc104070a17d8e8a28484e21d"  # ← твой API_HASH
 SPECIAL_USER_DROCHIT = 936315572
 SPECIAL_USER_PSRAL = 1328231117
 MIN_LENGTH = 20
@@ -170,3 +170,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
