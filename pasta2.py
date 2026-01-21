@@ -9,15 +9,14 @@ from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import Message
 from telethon import TelegramClient
-from telethon.tl.functions.messages import GetHistoryRequest
 from telethon.tl.types import InputPeerChannel
 from bs4 import BeautifulSoup
 import requests
 
 # ── Настройки ────────────────────────────────────────────────────────────────
 BOT_TOKEN = "8520620674:AAEI6e3RC61QKoZhxI4QOxxRoTtMS0NdN0M"
-API_ID = 37663298  # ← твой API_ID
-API_HASH = "e95ae41cc104070a17d8e8a28484e21d"  # ← твой API_HASH
+API_ID = 37663298          # ← твои данные
+API_HASH = "e95ae41cc104070a17d8e8a28484e21d"
 JSON_FILE = "result.json"
 SPECIAL_USER_DROCHIT = 936315572
 SPECIAL_USER_PSRAL = 1328231117
@@ -27,23 +26,23 @@ SPECIAL_CHANCE = 0.5
 OTHER_CHANCE = 0.1
 GIF_CHANCE = 0.3
 
-CHANNELS = ["rand2ch", "memeskwin"]  # usernames каналов для парсинга
+CHANNEL_USERNAMES = ["rand2ch", "memeskwin"]  # каналы для парсинга
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 teyki_list = []
-media_cache = []  # список (type, file_id) из каналов
+media_cache = []  # список (type, media_object) из каналов
 recently_sent = deque(maxlen=RECENT_LIMIT)
 
-# ZOV пасты (70 штук — вставь свои, я оставил плейсхолдер)
+# ZOV пасты (вставь свои 70 штук)
 zov_pasty = [
     "Когда в 3 ночи прилетает оповещение о мобилизации, а ты уже третий день в запое и думаешь: «Ну всё, гойда по полной» 😂",
-    # ... добавь все 70 своих паст сюда
+    # ... все твои пасты сюда
 ]
 
-# Гифки ZOV/гойда (15 штук)
+# Гифки ZOV (15 штук)
 zov_gifs = [
     "https://media.tenor.com/ND_8Z8BDk-wAAAAM/объявлена-гойда.gif",
     "https://media.tenor.com/THnsLR2MfUUAAAAM/охлобыстин-гойда.gif",
@@ -72,10 +71,6 @@ def clean_text(raw_text):
         ).strip()
     return ""
 
-def is_ad(text: str) -> bool:
-    lower = text.lower()
-    return any(word in lower for word in ["http", "t.me", "prom", "скидк", "реклам", "купить", "заказ"])
-
 def load_teyki():
     global teyki_list
     try:
@@ -91,8 +86,6 @@ def load_teyki():
             if not text or len(text) < MIN_LENGTH:
                 continue
             if "#тейк" not in text:
-                continue
-            if is_ad(text):
                 continue
 
             teyki_list.append(text)
@@ -116,27 +109,29 @@ async def get_random_pasta():
 
     return text
 
-# ── Парсинг каналов через Telethon ───────────────────────────────────────────
+# ── Парсинг каналов без фильтров на рекламу ──────────────────────────────────
 async def parse_channels():
     global media_cache
     client = TelegramClient("my_session", API_ID, API_HASH)
     await client.start()
 
-    for username in CHANNELS:
+    for username in CHANNEL_USERNAMES:
         try:
             entity = await client.get_entity(username)
             print(f"Получен канал @{username} (ID: {entity.id})")
 
-            async for message in client.iter_messages(entity, limit=200):
-                caption = (message.message or "").lower()
-                if is_ad(caption):
-                    continue
+            # Автоматическая подписка, если не подписан
+            if not entity.participant:
+                await client(JoinChannelRequest(entity))
+                print(f"Подписался на @{username}")
 
+            async for message in client.iter_messages(entity, limit=200):
+                # Без фильтра на рекламу — берём всё медиа
                 if message.photo:
                     media_cache.append(("photo", message.photo))
                 elif message.video:
                     media_cache.append(("video", message.video))
-                elif message.gif or message.document and 'video/mp4' in message.document.mime_type:
+                elif message.gif or (message.document and 'video/mp4' in message.document.mime_type):
                     media_cache.append(("animation", message.document))
         except Exception as e:
             logging.error(f"Ошибка парсинга @{username}: {e}")
