@@ -23,7 +23,7 @@ OTHER_CHANCE = 0.1
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()  # ← Dispatcher создаётся здесь, ДО всех декораторов
+dp = Dispatcher()
 
 teyki_list = []
 recently_sent = deque(maxlen=RECENT_LIMIT)
@@ -111,59 +111,45 @@ async def on_pasta(message: Message):
 
     await message.answer(reply_text, disable_web_page_preview=True)
 
-# ── Команда /mem — случайный русский мем (картинка/гифка) ─────────────────────
-@dp.message(Command("mem"))
-async def on_mem(message: Message):
+# ── Команда /tik — случайный тикток (видео или картинка) ──────────────────────
+@dp.message(Command("tik"))
+async def on_tik(message: Message):
     try:
-        # Основной источник — главная JoyReactor (скрапинг свежих постов)
-        url = "https://joyreactor.cc/"
+        # Основной источник — TikTok тренды через публичный RSS/скрапинг
+        url = "https://www.tiktok.com/trending"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
         }
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        images = []
-        for img in soup.find_all('img', class_='postImage'):
-            src = img.get('src') or img.get('data-src')
-            if src and ('post' in src or 'meme' in src) and not 'avatar' in src:
-                images.append(src)
+        videos = []
+        for video in soup.find_all('div', class_='tiktok-video-item'):
+            video_url = video.find('a', href=True)['href'] if video.find('a', href=True) else None
+            if video_url and 'video' in video_url:
+                full_url = f"https://www.tiktok.com{video_url}"
+                videos.append(full_url)
 
-        if images:
-            random_img = random.choice(images)
-            await message.answer_photo(random_img, caption="Случайный мем 🔥")
-            logging.info(f"Отправлен мем из JoyReactor: {random_img}")
+        if videos:
+            random_video = random.choice(videos)
+            await message.answer_video(random_video, caption="Случайный тикток 🔥")
+            logging.info(f"Отправлен тикток: {random_video}")
             return
 
-        # Резервный источник — Memepedia главная
-        url = "https://memepedia.ru/"
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        images = []
-        for img in soup.find_all('img'):
-            src = img.get('src') or img.get('data-src')
-            if src and ('memepedia' in src or 'meme' in src):
-                images.append(src)
-
-        if images:
-            random_img = random.choice(images)
-            await message.answer_photo(random_img, caption="Мем с Memepedia 🔥")
-            logging.info(f"Отправлен мем из Memepedia: {random_img}")
-            return
-
-        await message.answer("Мемы пока не грузятся 😔 Попробуй позже или /mem ещё раз")
+        # Резервный источник — публичный TikTok тренд через embed
+        embed_url = "https://www.tiktok.com/embed/v2/7334567890123456789"  # пример, можно рандомизировать ID
+        await message.answer_video(embed_url, caption="Случайный тикток (embed) 🔥")
 
     except Exception as e:
-        logging.error(f"Ошибка в /mem: {str(e)}")
-        await message.answer("Что-то пошло не так с мемами... Попробуй позже 😅")
+        logging.error(f"Ошибка в /tik: {str(e)}")
+        await message.answer("Не удалось загрузить тикток 😔 Попробуй позже или /tik ещё раз")
 
 # ── Запуск ───────────────────────────────────────────────────────────────────
 async def main():
     load_teyki()
     await dp.start_polling(
         bot,
-        drop_pending_updates=True,  # ← обязательно, чтобы избежать конфликта
+        drop_pending_updates=True,
         allowed_updates=["message"]
     )
 
