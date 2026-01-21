@@ -7,8 +7,8 @@ import logging
 from collections import deque
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
-from aiogram.types import Message
-from bs4 import BeautifulSoup
+from aiogram.types import Message, InputFile
+from io import BytesIO
 import requests
 
 # ── Настройки ────────────────────────────────────────────────────────────────
@@ -111,80 +111,11 @@ async def on_pasta(message: Message):
 
     await message.answer(reply_text, disable_web_page_preview=True)
 
-# ── Команда /mem ─────────────────────────────────────────────────────────────
+# ── Команда /mem — случайный русский мем (картинка/гифка/видео) ─────────────
 @dp.message(Command("mem"))
 async def on_mem(message: Message):
-    try:
-        url = "https://joyreactor.cc/api/v1/posts?tags=мем&limit=20"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, timeout=8)
-        data = response.json()
-
-        if not data.get("posts"):
-            await message.answer("Мемы кончились 😔 Попробуй позже")
-            return
-
-        post = random.choice(data["posts"])
-        image_url = post.get("image", {}).get("url") or post.get("media", [{}])[0].get("url")
-
-        if image_url:
-            if image_url.endswith('.mp4') or 'video' in post.get("media_type", ""):
-                await message.answer_video(image_url, caption=post.get("title", "Мем дня 🔥"))
-            elif image_url.endswith('.gif'):
-                await message.answer_animation(image_url, caption=post.get("title", "Мем дня 🔥"))
-            else:
-                await message.answer_photo(image_url, caption=post.get("title", "Мем дня 🔥"))
-        else:
-            await message.answer("Не удалось найти мем 😢 Попробуй ещё раз")
-    except Exception as e:
-        logging.error(f"JoyReactor ошибка: {e}")
-        await message.answer("Что-то пошло не так с мемами... Попробуй позже 😅")
-
-# ── Команда /pinterest <запрос> ──────────────────────────────────────────────
-@dp.message(Command("pinterest"))
-async def on_pinterest(message: Message):
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        await message.answer("Напиши запрос, например: /pinterest мем кот")
-        return
-
-    query = args[1].strip().lower()
-    meme_keywords = ["meme", "мем", "прикол", "funny"]
-    if not any(kw in query for kw in meme_keywords):
-        query += " мем"
-
-    url = f"https://www.pinterest.com/search/pins/?q={query.replace(' ', '%20')}"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        images = []
-        for img in soup.find_all('img', src=re.compile(r'^https://i\.pinimg\.com/')):
-            src = img.get('src')
-            if src and any(kw in img.get('alt', '').lower() + src for kw in meme_keywords):
-                images.append(src)
-            if len(images) >= 5:
-                break
-
-        if not images:
-            await message.answer("Мемных картинок по запросу не нашёл 😔 Попробуй добавить 'мем'")
-            return
-
-        random_image = random.choice(images)
-        await message.answer_photo(random_image)
-    except Exception as e:
-        logging.error(f"Pinterest ошибка: {e}")
-        await message.answer("Не удалось загрузить картинку с Pinterest 😢")
-
-# ── Запуск ───────────────────────────────────────────────────────────────────
-async def main():
-    load_teyki()
-    await dp.start_polling(bot, allowed_updates=["message"])
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    sources = [
+        # JoyReactor — русские мемы, приколы, тикток-видео
+        "https://joyreactor.cc/api/v1/posts?tags=мем&limit=20",
+        # Memepedia свежие
+        "https://memepedia.ru/wp-json/wp/v2/posts?per_page=10&search=мем",
