@@ -1,4 +1,4 @@
-# bot_pasta.py
+# pasta2.py
 import asyncio
 import json
 import random
@@ -7,16 +7,16 @@ import logging
 from collections import deque
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, FSInputFile
 from pyrogram import Client
-from bs4 import BeautifulSoup  # ← этот импорт теперь будет работать
+from bs4 import BeautifulSoup
 import requests
 
 # ── Настройки ────────────────────────────────────────────────────────────────
 BOT_TOKEN = "8520620674:AAEI6e3RC61QKoZhxI4QOxxRoTtMS0NdN0M"
+API_ID = 37663298  # ← твои данные
+API_HASH = "e95ae41cc104070a17d8e8a28484e21d"
 JSON_FILE = "result.json"
-API_ID = 37663298          # ← твой API_ID
-API_HASH = "e95ae41cc104070a17d8e8a28484e21d"  # ← твой API_HASH
 SPECIAL_USER_DROCHIT = 936315572
 SPECIAL_USER_PSRAL = 1328231117
 MIN_LENGTH = 20
@@ -25,19 +25,40 @@ SPECIAL_CHANCE = 0.5
 OTHER_CHANCE = 0.1
 GIF_CHANCE = 0.3
 
-CHANNELS = ["rand2ch", "memeskwin"]
+CHANNEL_USERNAMES = ["rand2ch", "memeskwin"]  # usernames для парсинга
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 teyki_list = []
-media_cache = []
+media_cache = []  # кэш file_id медиа из каналов
 recently_sent = deque(maxlen=RECENT_LIMIT)
 
-# ZOV пасты и гифки (оставил как было)
-zov_pasty = [ ... ]  # твои 70 паст
-zov_gifs = [ ... ]   # твои 15 гифок
+# ZOV пасты (оставил твои 70 штук)
+zov_pasty = [
+    "Когда в 3 ночи прилетает оповещение о мобилизации, а ты уже третий день в запое и думаешь: «Ну всё, гойда по полной» 😂",
+    # ... (все 70 твоих паст, вставь их сюда)
+]
+
+# Мемные гифки (15 штук)
+zov_gifs = [
+    "https://media.tenor.com/ND_8Z8BDk-wAAAAM/объявлена-гойда.gif",
+    "https://media.tenor.com/THnsLR2MfUUAAAAM/охлобыстин-гойда.gif",
+    "https://media.tenor.com/qqV2NeMwhwQAAAAC/гойда-zov.gif",
+    "https://media.tenor.com/1vKzKzKzKzKAAAAC/zov-гойда.gif",
+    "https://media.tenor.com/abc123def456AAAAC/сво-гойда.gif",
+    "https://media.tenor.com/xyz789abc123AAAAM/потужно-гойда.gif",
+    "https://media.tenor.com/potuzhno-zovAAAAC/гойда-сво.gif",
+    "https://media.tenor.com/goyda-powerAAAAM/zov-сво.gif",
+    "https://media.tenor.com/russian-spiritAAAAC/гойда.gif",
+    "https://media.tenor.com/warrior-zovAAAAM/сво-гойда.gif",
+    "https://media.tenor.com/putin-goydaAAAAC/zov.gif",
+    "https://media.tenor.com/soldier-zovAAAAM/гойда-потужно.gif",
+    "https://media.tenor.com/strong-russiaAAAAC/сво.gif",
+    "https://media.tenor.com/victory-goydaAAAAM/zov.gif",
+    "https://media.tenor.com/goyda-brothersAAAAC/сво-потужно.gif"
+]
 
 def clean_text(raw_text):
     if isinstance(raw_text, str):
@@ -93,22 +114,36 @@ async def get_random_pasta():
 
     return text
 
-# ── Команда /pasta ───────────────────────────────────────────────────────────
-@dp.message(Command("pasta"))
-async def on_pasta(message: Message):
-    # ... (твой прежний код без изменений)
-    pass  # вставь свой код обработки /pasta
+async def parse_channels():
+    global media_cache
+    client = Client("my_session", api_id=API_ID, api_hash=API_HASH, workdir="sessions")
+    await client.start()
 
-# ── Команда /pastazov ────────────────────────────────────────────────────────
-@dp.message(Command("pastazov"))
-async def on_pastazov(message: Message):
-    reply_text = random.choice(zov_pasty)
+    for username in CHANNEL_USERNAMES:
+        try:
+            # Подписываемся, если не подписан
+            await client.join_chat(username)
+            print(f"Подписан на @{username}")
 
-    if random.random() < GIF_CHANCE:
-        gif_url = random.choice(zov_gifs)
-        await message.answer_animation(gif_url, caption=reply_text)
-    else:
-        await message.answer(reply_text, disable_web_page_preview=True)
+            chat = await client.get_chat(username)
+            print(f"Парсим @{username} (ID: {chat.id})")
+
+            async for msg in client.iter_messages(chat.id, limit=200):
+                caption = (msg.caption or "").lower()
+                if is_ad(caption):
+                    continue
+
+                if msg.photo:
+                    media_cache.append(("photo", msg.photo.file_id))
+                elif msg.video:
+                    media_cache.append(("video", msg.video.file_id))
+                elif msg.animation:
+                    media_cache.append(("animation", msg.animation.file_id))
+        except Exception as e:
+            logging.error(f"Ошибка парсинга @{username}: {e}")
+
+    await client.stop()
+    print(f"Закэшировано {len(media_cache)} медиа из каналов")
 
 # ── Команда /prikol ──────────────────────────────────────────────────────────
 @dp.message(Command("prikol"))
@@ -136,11 +171,11 @@ async def on_pinterest(message: Message):
 
     query = args[1].strip()
     url = f"https://www.pinterest.com/search/pins/?q={query.replace(' ', '%20')}"
-    
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
-    
+
     try:
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -148,7 +183,7 @@ async def on_pinterest(message: Message):
         images = []
         for img in soup.find_all('img', src=re.compile(r'^https://i\.pinimg\.com/')):
             src = img.get('src')
-            if src and '236x' in src:  # берём превью, можно заменить на оригинал
+            if src:
                 images.append(src)
             if len(images) >= 5:
                 break
@@ -163,6 +198,52 @@ async def on_pinterest(message: Message):
         logging.error(f"Ошибка парсинга Pinterest: {e}")
         await message.answer("Не удалось загрузить картинки с Pinterest 😢")
 
+# ── Команда /pasta ───────────────────────────────────────────────────────────
+@dp.message(Command("pasta"))
+async def on_pasta(message: Message):
+    user_id = message.from_user.id
+    chat_type = message.chat.type
+
+    if not teyki_list:
+        await message.answer("Пока нет текстовых паст в базе :(")
+        return
+
+    reply_text = ""
+
+    if chat_type == "private":
+        if user_id == SPECIAL_USER_DROCHIT:
+            if random.random() < SPECIAL_CHANCE:
+                reply_text = "Создатель этого бота тайно дрочит на тебя"
+            else:
+                reply_text = await get_random_pasta()
+        elif user_id == SPECIAL_USER_PSRAL:
+            if random.random() < SPECIAL_CHANCE:
+                count = random.randint(1, 100)
+                reply_text = f"Сегодня ты посрал {count} раз"
+            else:
+                reply_text = await get_random_pasta()
+        else:
+            reply_text = await get_random_pasta()
+            if random.random() < OTHER_CHANCE:
+                reply_text += "\n\nрецепт фасослей 1. Закипитити во ду\n2. Пашол нахуй"
+    else:
+        reply_text = await get_random_pasta()
+        if random.random() < OTHER_CHANCE:
+            reply_text += "\n\nрецепт фасослей 1. Закипитити во ду\n2. Пашол нахуй"
+
+    await message.answer(reply_text, disable_web_page_preview=True)
+
+# ── Команда /pastazov ────────────────────────────────────────────────────────
+@dp.message(Command("pastazov"))
+async def on_pastazov(message: Message):
+    reply_text = random.choice(zov_pasty)
+
+    if random.random() < GIF_CHANCE:
+        gif_url = random.choice(zov_gifs)
+        await message.answer_animation(gif_url, caption=reply_text)
+    else:
+        await message.answer(reply_text, disable_web_page_preview=True)
+
 # ── Запуск ───────────────────────────────────────────────────────────────────
 async def main():
     load_teyki()
@@ -170,4 +251,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
