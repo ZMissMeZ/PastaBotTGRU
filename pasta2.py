@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 import requests
 
 # ── Настройки ────────────────────────────────────────────────────────────────
-BOT_TOKEN = "8520620674:AAEI6e3RC61QKoZhxI4QOxxRoTtMS0NdN0M"
+BOT_TOKEN = "8520620674:AAHsC4lieBB-2zlu1bIIODqC39qlGvcy-wo"
 JSON_FILE = "result.json"
 SPECIAL_USER_DROCHIT = 936315572
 SPECIAL_USER_PSRAL = 1328231117
@@ -155,3 +155,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
