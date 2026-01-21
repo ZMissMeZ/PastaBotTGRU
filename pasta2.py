@@ -9,13 +9,13 @@ from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import Message
 from telethon import TelegramClient
-from telethon.tl.types import InputPeerChannel
+from telethon.sessions import StringSession
 from bs4 import BeautifulSoup
 import requests
 
 # ── Настройки ────────────────────────────────────────────────────────────────
 BOT_TOKEN = "8520620674:AAEI6e3RC61QKoZhxI4QOxxRoTtMS0NdN0M"
-API_ID = 37663298          # ← твои данные
+API_ID = 37663298
 API_HASH = "e95ae41cc104070a17d8e8a28484e21d"
 JSON_FILE = "result.json"
 SPECIAL_USER_DROCHIT = 936315572
@@ -26,23 +26,26 @@ SPECIAL_CHANCE = 0.5
 OTHER_CHANCE = 0.1
 GIF_CHANCE = 0.3
 
-CHANNEL_USERNAMES = ["rand2ch", "memeskwin"]  # каналы для парсинга
+CHANNEL_USERNAMES = ["rand2ch", "memeskwin"]
+
+# Твоя строка сессии Telethon (вставлена)
+SESSION_STRING = "1ApWapzMBuxKduX8s5zxdlU0sVnfBpD90549W0pRm8VNHLb7k1OI7wcAXDVtqTwf2UkrNwncTxllSdc0qT5dhX59_CQyrW1tH6erac9V1AmQ1Nqyo7HYkAH6YKob74z-EHb_zKcn9rzHXPCBQiQdHmKa3fLu1T7TJ7P_KLyXB4lexBzvxJ5KVX10zCg0okXkjlAIxhqpFs017LkMkcmqVL7QUrd9jtIdN3ZgVyNA55vTACsjNw4MS4eU9_QHKbOmkz6oQE0wALLskSSjdvXAJ2gW1SPJdE119v9qz3ACz1Y6n4QKYZhUTfx7ufyGwjEZVTkhRztSJZvBttmKDkWbYTKIFfQm9hJA="
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 teyki_list = []
-media_cache = []  # список (type, media_object) из каналов
+media_cache = []  # список (type, media) из каналов
 recently_sent = deque(maxlen=RECENT_LIMIT)
 
 # ZOV пасты (вставь свои 70 штук)
 zov_pasty = [
     "Когда в 3 ночи прилетает оповещение о мобилизации, а ты уже третий день в запое и думаешь: «Ну всё, гойда по полной» 😂",
-    # ... все твои пасты сюда
+    # ... добавь все свои пасты сюда
 ]
 
-# Гифки ZOV (15 штук)
+# Гифки ZOV
 zov_gifs = [
     "https://media.tenor.com/ND_8Z8BDk-wAAAAM/объявлена-гойда.gif",
     "https://media.tenor.com/THnsLR2MfUUAAAAM/охлобыстин-гойда.gif",
@@ -109,41 +112,42 @@ async def get_random_pasta():
 
     return text
 
-# ── Парсинг каналов без фильтров на рекламу ──────────────────────────────────
+# ── Парсинг каналов через Telethon (без фильтров) ────────────────────────────
 async def parse_channels():
     global media_cache
-    client = TelegramClient("my_session", API_ID, API_HASH)
-    await client.start()
+    client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
-    for username in CHANNEL_USERNAMES:
-        try:
-            entity = await client.get_entity(username)
-            print(f"Получен канал @{username} (ID: {entity.id})")
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            print("Сессия не авторизована! Запусти tele_auth.py локально и обнови SESSION_STRING.")
+            return
 
-            # Автоматическая подписка, если не подписан
-            if not entity.participant:
-                await client(JoinChannelRequest(entity))
-                print(f"Подписался на @{username}")
+        for username in CHANNEL_USERNAMES:
+            try:
+                entity = await client.get_entity(username)
+                print(f"Получен канал @{username} (ID: {entity.id})")
 
-            async for message in client.iter_messages(entity, limit=200):
-                # Без фильтра на рекламу — берём всё медиа
-                if message.photo:
-                    media_cache.append(("photo", message.photo))
-                elif message.video:
-                    media_cache.append(("video", message.video))
-                elif message.gif or (message.document and 'video/mp4' in message.document.mime_type):
-                    media_cache.append(("animation", message.document))
-        except Exception as e:
-            logging.error(f"Ошибка парсинга @{username}: {e}")
+                async for message in client.iter_messages(entity, limit=200):
+                    # Без фильтров — берём всё медиа
+                    if message.photo:
+                        media_cache.append(("photo", message.photo))
+                    elif message.video:
+                        media_cache.append(("video", message.video))
+                    elif message.gif or (message.document and message.document.mime_type.startswith('video/')):
+                        media_cache.append(("animation", message.document))
+            except Exception as e:
+                logging.error(f"Ошибка парсинга @{username}: {e}")
 
-    await client.disconnect()
-    print(f"Закэшировано {len(media_cache)} медиа из каналов")
+        print(f"Закэшировано {len(media_cache)} медиа из каналов")
+    finally:
+        await client.disconnect()
 
 # ── Команда /prikol ──────────────────────────────────────────────────────────
 @dp.message(Command("prikol"))
 async def on_prikol(message: Message):
     if not media_cache:
-        await message.answer("Медиа из каналов пока не загружены. Перезапусти бота или подожди.")
+        await message.answer("Медиа из каналов пока не загружены. Перезапусти бота.")
         return
 
     media_type, media = random.choice(media_cache)
