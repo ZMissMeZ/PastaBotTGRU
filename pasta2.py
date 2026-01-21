@@ -7,8 +7,8 @@ import logging
 from collections import deque
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
-from aiogram.types import Message, InputFile
-from io import BytesIO
+from aiogram.types import Message
+from bs4 import BeautifulSoup
 import requests
 
 # ── Настройки ────────────────────────────────────────────────────────────────
@@ -111,11 +111,56 @@ async def on_pasta(message: Message):
 
     await message.answer(reply_text, disable_web_page_preview=True)
 
-# ── Команда /mem — случайный русский мем (картинка/гифка/видео) ─────────────
+# ── Команда /mem — случайный русский мем (картинка или гифка) ────────────────
 @dp.message(Command("mem"))
 async def on_mem(message: Message):
-    sources = [
-        # JoyReactor — русские мемы, приколы, тикток-видео
-        "https://joyreactor.cc/api/v1/posts?tags=мем&limit=20",
-        # Memepedia свежие
-        "https://memepedia.ru/wp-json/wp/v2/posts?per_page=10&search=мем",
+    try:
+        # Основной источник — JoyReactor (русские мемы, приколы)
+        url = "https://joyreactor.cc/api/v1/posts?tags=мем&limit=10"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        response = requests.get(url, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("posts"):
+                post = random.choice(data["posts"])
+                img_url = post.get("image", {}).get("url") or post.get("media", [{}])[0].get("url")
+
+                if img_url:
+                    if img_url.endswith('.gif'):
+                        await message.answer_animation(img_url, caption="Случайный мем 🔥")
+                    else:
+                        await message.answer_photo(img_url, caption="Случайный мем 🔥")
+                    return
+
+        # Резервный источник — Memepedia (если JoyReactor не ответил)
+        url = "https://memepedia.ru/?s=мем&feed=rss2"
+        response = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.text, 'xml')
+
+        items = soup.find_all('item')
+        if items:
+            item = random.choice(items)
+            title = item.find('title').text if item.find('title') else "Мем"
+            description = item.find('description').text if item.find('description') else ""
+
+            soup_desc = BeautifulSoup(description, 'html.parser')
+            img = soup_desc.find('img')
+            if img and img.get('src'):
+                img_url = img['src']
+                await message.answer_photo(img_url, caption=title)
+                return
+
+        await message.answer("Мемы пока не грузятся 😔 Попробуй позже или /mem ещё раз")
+
+    except Exception as e:
+        logging.error(f"Ошибка в /mem: {str(e)}")
+        await message.answer("Что-то пошло не так с мемами... Попробуй позже 😅")
+
+# ── Запуск ───────────────────────────────────────────────────────────────────
+async def main():
+    load_teyki()
+    await dp.start_polling(bot, allowed_updates=["message"])
+
+if __name__ == "__main__":
+    asyncio.run(main())
