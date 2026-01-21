@@ -5,22 +5,14 @@ import random
 import re
 import logging
 from collections import deque
-from io import BytesIO
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
-from aiogram.types import Message, InputFile
-from telethon import TelegramClient
-from telethon.sessions import StringSession
-from telethon.tl.functions.channels import JoinChannelRequest
+from aiogram.types import Message
 from bs4 import BeautifulSoup
 import requests
 
 # ── Настройки ────────────────────────────────────────────────────────────────
 BOT_TOKEN = "8520620674:AAEI6e3RC61QKoZhxI4QOxxRoTtMS0NdN0M"
-API_ID = 37663298
-API_HASH = "e95ae41cc104070a17d8e8a28484e21d"
-SESSION_STRING = "1ApWapzMBuxKduX8s5zxdlU0sVnfBpD90549W0pRm8VNHLb7k1OI7wcAXDVtqTwf2UkrNwncTxllSdc0qT5dhX59_CQyrW1tH6erac9V1AmQ1Nqyo7HYkAH6YKob74z-EHb_zKcn9rzHXPCBQiQdHmKa3fLu1T7TJ7P_KLyXB4lexBzvxJ5KVX10zCg0okXkjlAIxhqpFs017LkMkcmqVL7QUrd9jtIdN3ZgVyNA55vTACsjNw4MS4eU9_QHKbOmkz6oQE0wALLskSSjdvXAJ2gW1SPJdE119v9qz3ACz1Y6n4QKYZhUTfx7ufyGwjEZVTkhRztSJZvBttmKDkWbYTKIFfQm9hJA="
-
 JSON_FILE = "result.json"
 SPECIAL_USER_DROCHIT = 936315572
 SPECIAL_USER_PSRAL = 1328231117
@@ -28,42 +20,13 @@ MIN_LENGTH = 20
 RECENT_LIMIT = 10
 SPECIAL_CHANCE = 0.5
 OTHER_CHANCE = 0.1
-GIF_CHANCE = 0.3
-
-CHANNEL_USERNAMES = ["rand2ch", "memeskwin"]
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 teyki_list = []
-media_cache = []  # список (type, bytes_io)
 recently_sent = deque(maxlen=RECENT_LIMIT)
-
-# ZOV пасты (вставь свои 70 штук)
-zov_pasty = [
-    "Когда в 3 ночи прилетает оповещение о мобилизации, а ты уже третий день в запое и думаешь: «Ну всё, гойда по полной» 😂",
-    # ... все твои пасты сюда
-]
-
-# Гифки ZOV
-zov_gifs = [
-    "https://media.tenor.com/ND_8Z8BDk-wAAAAM/объявлена-гойда.gif",
-    "https://media.tenor.com/THnsLR2MfUUAAAAM/охлобыстин-гойда.gif",
-    "https://media.tenor.com/qqV2NeMwhwQAAAAC/гойда-zov.gif",
-    "https://media.tenor.com/1vKzKzKzKzKAAAAC/zov-гойда.gif",
-    "https://media.tenor.com/abc123def456AAAAC/сво-гойда.gif",
-    "https://media.tenor.com/xyz789abc123AAAAM/потужно-гойда.gif",
-    "https://media.tenor.com/potuzhno-zovAAAAC/гойда-сво.gif",
-    "https://media.tenor.com/goyda-powerAAAAM/zov-сво.gif",
-    "https://media.tenor.com/russian-spiritAAAAC/гойда.gif",
-    "https://media.tenor.com/warrior-zovAAAAM/сво-гойда.gif",
-    "https://media.tenor.com/putin-goydaAAAAC/zov.gif",
-    "https://media.tenor.com/soldier-zovAAAAM/гойда-потужно.gif",
-    "https://media.tenor.com/strong-russiaAAAAC/сво.gif",
-    "https://media.tenor.com/victory-goydaAAAAM/zov.gif",
-    "https://media.tenor.com/goyda-brothersAAAAC/сво-потужно.gif"
-]
 
 def clean_text(raw_text):
     if isinstance(raw_text, str):
@@ -113,82 +76,114 @@ async def get_random_pasta():
 
     return text
 
-# ── Парсинг каналов без фильтров ─────────────────────────────────────────────
-async def parse_channels():
-    global media_cache
-    client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+# ── Команда /pasta ───────────────────────────────────────────────────────────
+@dp.message(Command("pasta"))
+async def on_pasta(message: Message):
+    user_id = message.from_user.id
+    chat_type = message.chat.type
 
-    try:
-        await client.connect()
-        if not await client.is_user_authorized():
-            print("Сессия не авторизована! Проверь SESSION_STRING.")
-            return
-
-        for username in CHANNEL_USERNAMES:
-            try:
-                entity = await client.get_entity(username)
-                print(f"Получен канал @{username} (ID: {entity.id})")
-
-                # Автоподписка
-                if not hasattr(entity, 'participant') or not entity.participant:
-                    await client(JoinChannelRequest(entity))
-                    print(f"Подписался на @{username}")
-
-                async for message in client.iter_messages(entity, limit=300):
-                    if message.photo:
-                        bytes_io = await message.download_media(file=BytesIO())
-                        if bytes_io:
-                            bytes_io.seek(0)
-                            media_cache.append(("photo", bytes_io))
-                    elif message.video:
-                        bytes_io = await message.download_media(file=BytesIO())
-                        if bytes_io:
-                            bytes_io.seek(0)
-                            media_cache.append(("video", bytes_io))
-                    elif message.gif or (message.document and message.document.mime_type.startswith('video/')):
-                        bytes_io = await message.download_media(file=BytesIO())
-                        if bytes_io:
-                            bytes_io.seek(0)
-                            media_cache.append(("animation", bytes_io))
-
-            except Exception as e:
-                logging.error(f"Ошибка парсинга @{username}: {e}")
-
-        print(f"Закэшировано {len(media_cache)} медиа из каналов")
-    except Exception as e:
-        logging.error(f"Глобальная ошибка Telethon: {e}")
-    finally:
-        await client.disconnect()
-
-# ── Команда /prikol ──────────────────────────────────────────────────────────
-@dp.message(Command("prikol"))
-async def on_prikol(message: Message):
-    if not media_cache:
-        await message.answer("Медиа из каналов пока не загружены. Перезапусти бота или подожди 1–2 минуты.")
+    if not teyki_list:
+        await message.answer("Пока нет текстовых паст в базе :(")
         return
 
-    media_type, bytes_io = random.choice(media_cache)
-    bytes_io.seek(0)  # обязательно!
+    reply_text = ""
+
+    if chat_type == "private":
+        if user_id == SPECIAL_USER_DROCHIT:
+            if random.random() < SPECIAL_CHANCE:
+                reply_text = "Создатель этого бота тайно дрочит на тебя"
+            else:
+                reply_text = await get_random_pasta()
+        elif user_id == SPECIAL_USER_PSRAL:
+            if random.random() < SPECIAL_CHANCE:
+                count = random.randint(1, 100)
+                reply_text = f"Сегодня ты посрал {count} раз"
+            else:
+                reply_text = await get_random_pasta()
+        else:
+            reply_text = await get_random_pasta()
+            if random.random() < OTHER_CHANCE:
+                reply_text += "\n\nрецепт фасослей 1. Закипитити во ду\n2. Пашол нахуй"
+    else:
+        reply_text = await get_random_pasta()
+        if random.random() < OTHER_CHANCE:
+            reply_text += "\n\nрецепт фасослей 1. Закипитити во ду\n2. Пашол нахуй"
+
+    await message.answer(reply_text, disable_web_page_preview=True)
+
+# ── Команда /mem ─────────────────────────────────────────────────────────────
+@dp.message(Command("mem"))
+async def on_mem(message: Message):
+    try:
+        url = "https://joyreactor.cc/api/v1/posts?tags=мем&limit=20"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, timeout=8)
+        data = response.json()
+
+        if not data.get("posts"):
+            await message.answer("Мемы кончились 😔 Попробуй позже")
+            return
+
+        post = random.choice(data["posts"])
+        image_url = post.get("image", {}).get("url") or post.get("media", [{}])[0].get("url")
+
+        if image_url:
+            if image_url.endswith('.mp4') or 'video' in post.get("media_type", ""):
+                await message.answer_video(image_url, caption=post.get("title", "Мем дня 🔥"))
+            elif image_url.endswith('.gif'):
+                await message.answer_animation(image_url, caption=post.get("title", "Мем дня 🔥"))
+            else:
+                await message.answer_photo(image_url, caption=post.get("title", "Мем дня 🔥"))
+        else:
+            await message.answer("Не удалось найти мем 😢 Попробуй ещё раз")
+    except Exception as e:
+        logging.error(f"JoyReactor ошибка: {e}")
+        await message.answer("Что-то пошло не так с мемами... Попробуй позже 😅")
+
+# ── Команда /pinterest <запрос> ──────────────────────────────────────────────
+@dp.message(Command("pinterest"))
+async def on_pinterest(message: Message):
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer("Напиши запрос, например: /pinterest мем кот")
+        return
+
+    query = args[1].strip().lower()
+    meme_keywords = ["meme", "мем", "прикол", "funny"]
+    if not any(kw in query for kw in meme_keywords):
+        query += " мем"
+
+    url = f"https://www.pinterest.com/search/pins/?q={query.replace(' ', '%20')}"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 
     try:
-        if media_type == "photo":
-            await message.answer_photo(InputFile(bytes_io, filename="photo.jpg"))
-        elif media_type == "video":
-            await message.answer_video(InputFile(bytes_io, filename="video.mp4"))
-        elif media_type == "animation":
-            await message.answer_animation(InputFile(bytes_io, filename="animation.gif"))
-        print(f"Отправлено медиа: {media_type}")
-    except Exception as e:
-        logging.error(f"Ошибка отправки медиа: {e}")
-        await message.answer(f"Не удалось отправить прикол: {str(e)} 😢 Попробуй ещё раз.")
+        response = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-# ── Остальные команды (без изменений) ────────────────────────────────────────
-# ... (вставь сюда свои /pasta и /pastazov из предыдущей версии)
+        images = []
+        for img in soup.find_all('img', src=re.compile(r'^https://i\.pinimg\.com/')):
+            src = img.get('src')
+            if src and any(kw in img.get('alt', '').lower() + src for kw in meme_keywords):
+                images.append(src)
+            if len(images) >= 5:
+                break
+
+        if not images:
+            await message.answer("Мемных картинок по запросу не нашёл 😔 Попробуй добавить 'мем'")
+            return
+
+        random_image = random.choice(images)
+        await message.answer_photo(random_image)
+    except Exception as e:
+        logging.error(f"Pinterest ошибка: {e}")
+        await message.answer("Не удалось загрузить картинку с Pinterest 😢")
 
 # ── Запуск ───────────────────────────────────────────────────────────────────
 async def main():
     load_teyki()
-    await parse_channels()  # парсим каналы при старте
     await dp.start_polling(bot, allowed_updates=["message"])
 
 if __name__ == "__main__":
